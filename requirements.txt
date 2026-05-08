@@ -11,3 +11,4 @@ requests>=2.31
 yt-dlp>=2024.1
 awsgi>=0.0.5
 webrtcvad>=2.0.10
+gunicorn>=21.2
