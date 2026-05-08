@@ -7,6 +7,9 @@ import uuid
 import warnings
 import tempfile
 import re
+import traceback
+
+from werkzeug.exceptions import HTTPException
 
 warnings.filterwarnings("ignore")
 
@@ -16,15 +19,72 @@ CORS(app)
 @app.after_request
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Accept, Authorization, X-Requested-With"
+    )
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Max-Age"] = "86400"
     return response
 
+
+# ------------------------------------------------------------------
+# Global error handlers
+#
+# Problem observed in browser:
+# - POST /predict-file returns 500 and browser reports:
+#   "No 'Access-Control-Allow-Origin' header is present"
+#
+# Sometimes the response that reaches the client doesn't include CORS
+# headers (e.g., unhandled exceptions / worker errors). This ensures
+# every error response has CORS so frontend can read the JSON error.
+# ------------------------------------------------------------------
+def _add_cors_headers(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Accept, Authorization, X-Requested-With"
+    )
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    resp.headers["Access-Control-Max-Age"] = "86400"
+    return resp
+
+
 @app.before_request
 def handle_preflight():
+    """CORS preflight must include Allow-* headers (some proxies strip after_request on 204)."""
     if request.method == "OPTIONS":
-        return make_response("", 204)
+        return _add_cors_headers(make_response("", 204))
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e: HTTPException):
+    payload = {
+        "error": getattr(e, "name", "HTTPException"),
+        "code": getattr(e, "code", None),
+        "details": getattr(e, "description", None),
+    }
+    resp = jsonify(payload)
+    resp.status_code = int(getattr(e, "code", 500) or 500)
+    return _add_cors_headers(resp)
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_exception(e: Exception):
+    # Keep trace only when explicitly enabled.
+    debug_trace = os.environ.get("MV_DEBUG_TRACEBACK", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    payload = {
+        "error": "Internal Server Error",
+        "details": str(e),
+    }
+    if debug_trace:
+        payload["traceback"] = traceback.format_exc()
+    resp = jsonify(payload)
+    resp.status_code = 500
+    return _add_cors_headers(resp)
 
 # =========================
 # CONFIG
