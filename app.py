@@ -7,6 +7,7 @@ import uuid
 import warnings
 import tempfile
 import re
+import shutil
 import traceback
 
 from werkzeug.exceptions import HTTPException
@@ -108,6 +109,25 @@ reference_folder = os.path.join(BASE_DIR, "reference_voice")
 temp_folder      = os.path.join(tempfile.gettempdir(), "myvoiceguard_temp")
 os.makedirs(reference_folder, exist_ok=True)
 os.makedirs(temp_folder,      exist_ok=True)
+
+
+def _ffmpeg_available():
+    """MP3/M4A/WebM decode (pydub/librosa) needs ffmpeg on PATH — check /health."""
+    return shutil.which("ffmpeg") is not None
+
+
+@app.route("/", methods=["GET"])
+def root():
+    """Avoid bare-domain 404; helps verify the Render service URL."""
+    return jsonify(
+        {
+            "service": "MyVoiceGuard API",
+            "health": "/health",
+            "routes": "/routes",
+            "endpoints": ["POST /predict-file", "POST /predict-url", "POST /predict-live"],
+            "ffmpeg_in_path": _ffmpeg_available(),
+        }
+    )
 
 
 @app.route("/web", methods=["GET"])
@@ -369,6 +389,37 @@ def _parse_youtube_start_seconds(url: str) -> float:
 # =========================
 def convert_to_wav(input_path, output_path):
     print(f"[CONVERT] {input_path} -> {output_path}")
+    ext = os.path.splitext(input_path)[1].lower()
+    compressed = ext in (".mp3", ".m4a", ".aac", ".webm", ".ogg", ".opus", ".flac")
+
+    # Prefer ffmpeg first for compressed audio when available (Render Python image often lacks it;
+    # Docker image in this repo installs ffmpeg — see Dockerfile / render.yaml).
+    if compressed and _ffmpeg_available():
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    input_path,
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    output_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode == 0:
+                print("[CONVERT] ffmpeg (preferred for compressed) OK")
+                return True
+            print(f"[CONVERT] ffmpeg preferred path failed: {result.stderr[-400:]}")
+        except Exception as e:
+            print(f"[CONVERT] ffmpeg preferred error: {e}")
 
     if PYDUB_OK:
         try:
@@ -1305,6 +1356,7 @@ def health():
         "model":            model_status,
         "librosa":          LIBROSA_OK,
         "pydub":            PYDUB_OK,
+        "ffmpeg_in_path":   _ffmpeg_available(),
         "model_classes":    model_classes,
         "model_features":   _get_model_expected_features(),
         "reference_voices": refs,
@@ -1416,7 +1468,15 @@ def predict_file():
 
         if not convert_to_wav(in_path, wav_path):
             safe_remove(in_path)
-            return jsonify({"error": "Audio conversion failed. Is FFmpeg installed?"}), 500
+            return jsonify(
+                {
+                    "error": (
+                        "Audio conversion failed (MP3/M4A/WebM need ffmpeg on the server). "
+                        "On Render: deploy with Docker using the repo Dockerfile, or install ffmpeg. "
+                        f"ffmpeg_in_path={_ffmpeg_available()}"
+                    )
+                }
+            ), 500
 
         source_label = f"Upload: {file.filename[:50]}"
         data = process_audio(wav_path, source_label, name_hint=name_hint)
