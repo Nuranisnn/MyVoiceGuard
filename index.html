@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyVoiceGuard | Audio Deepfake Detection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --neon-lime: #ccff00;
+            --deep-purple: #2d1b4d;
+            --dark-bg: #05051a;
+        }
+
+        body {
+            background-image: 
+            linear-gradient(rgba(5,5,26,0.7), rgba(5,5,26,0.7)),
+            url('Photo/background.jpg');
+
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            overflow-x: hidden;
+}
+
+        .nav-pill {
+            background: linear-gradient(to right, #331a5e, #2d1b4d);
+            border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .content-card {
+            background-color: rgba(45, 27, 77, 0.9);
+            border-radius: 2.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        .icon-circle {
+            background-color: var(--neon-lime);
+            width: 3.5rem; height: 3.5rem;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1.5rem;
+            color: black; font-size: 1.5rem; font-weight: bold;
+        }
+
+        .waveform-visual {
+            width: 100%; height: 60px;
+            background: repeating-linear-gradient(90deg, var(--neon-lime) 0, var(--neon-lime) 2px, transparent 2px, transparent 12px);
+            mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
+            animation: waveShift 1.5s infinite linear;
+            opacity: 0.8;
+        }
+
+        @keyframes waveShift { from { background-position: 0 0; } to { background-position: 48px 0; } }
+
+        #progress-bar {
+            height: 100%; width: 0%;
+            background-color: black;
+            border-right: 2px solid var(--neon-lime);
+            transition: width 0.1s linear;
+        }
+
+        .page-section { display: none; }
+        .page-section.active { display: block; animation: fadeIn 0.4s ease-out; }
+        .hidden { display: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <nav class="nav-pill flex items-center justify-between px-10 py-3 rounded-full mx-6 mt-6 z-50">
+        <div class="flex items-center gap-3">
+           <div>
+             <a href="javascript:void(0)" onclick="showPage('home'); return false;">
+                <img src="Photo/Logo.png" alt="MyVoiceGuard Logo" class="h-12 object-contain">
+            </a>
+          </div>
+        </div>
+        <div class="flex gap-8 font-bold text-[20px] tracking-widest uppercase text-white">
+            <button type="button" onclick="showPage('home')" class="hover:text-purple-300">Home</button>
+            <button type="button" onclick="showPage('detection')" class="hover:text-purple-300">Detection</button>
+            <button type="button" onclick="showPage('about')" class="hover:text-purple-300">About</button>
+            <button type="button" onclick="showPage('contact')" class="hover:text-purple-300">Contact</button>
+        </div>
+    </nav>
+
+    <main class="flex-grow flex items-center justify-center p-6">
+
+        <section id="home" class="page-section active w-full max-w-6xl">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-12">
+                <div class="text-left">
+                    <h1 class="text-8xl font-black mb-6 tracking-tighter text-white">MyVoiceGuard</h1>
+                    <button type="button" onclick="showPage('detection')" class="bg-[#ccff00] text-black px-12 py-4 rounded-full text-xl font-black hover:scale-105 transition shadow-[0_0_20px_rgba(204,255,0,0.3)]">GET STARTED</button>
+                </div>
+                <div class="w-full max-w-md aspect-square bg-purple-900/20 rounded-full flex items-center justify-center border border-purple-500/30 overflow-hidden shadow-[0_0_40px_rgba(168,85,247,0.35)]">
+                    <img src="Photo/Gambarmenteri.png" alt="AI Brain" class="w-full h-full object-cover rounded-full">
+                </div>
+            </div>
+        </section>
+
+        <section id="detection" class="page-section w-full max-w-4xl text-center">
+
+  <h2 class="text-5xl font-black uppercase text-white mb-10 tracking-wide">How can we help you ?</h2>
+
+  <!-- LOGO ABOVE NAVIGATION -->
+  <div class="w-28 h-28 mx-auto mb-8 rounded-full overflow-hidden 
+              flex items-center justify-center 
+              shadow-[0_0_20px_rgba(168,85,247,0.35)]
+              hover:scale-105 transition-transform duration-300
+              hover:shadow-[0_0_30px_rgba(204,255,0,0.6)]">
+    <img src="Photo/Logo1.png" alt="MyVoiceGuard Logo" class="w-full h-full object-cover">
+  </div>
+
+  <!-- NAVIGATION BUTTONS -->
+  <div class="flex justify-center gap-4 mb-4">
+    <button onclick="setMode('upload')" class="bg-[#3a1c71] px-6 py-2 rounded-full border border-purple-400 text-[10px] font-bold uppercase hover:bg-purple-800 transition text-white">
+      Upload File
+    </button>
+    <button onclick="setMode('link')" class="bg-[#3a1c71] px-6 py-2 rounded-full border border-purple-400 text-[10px] font-bold uppercase hover:bg-purple-800 transition text-white">
+      Link URL
+    </button>
+    <button onclick="setMode('live')" class="bg-[#3a1c71] px-6 py-2 rounded-full border border-purple-400 text-[10px] font-bold uppercase hover:bg-purple-800 transition text-white">
+      Live Recording
+    </button>
+  </div>
+
+  <!-- CAPTION UPLOAD -->
+  <div id="caption-upload" class="flex flex-col items-center gap-2 mb-4">
+    <div class="flex items-center gap-2">
+      <span class="text-white text-md">(( ● ))</span>
+      <p class="text-sm font-semibold text-white">Upload Your Voice Now</p>
+    </div>
+    <p class="text-xs italic opacity-80 text-white">We Will Analyze For You!</p>
+  </div>
+
+  <!-- UPLOAD UI -->
+  <div id="ui-upload" class="content-card p-12 detect-card mx-auto max-w-2xl">
+
+    <input 
+     type="file"
+     id="audioFileInput"
+     accept=".mp3,.wav,.ogg,.m4a"
+     class="hidden"
+     onchange="fileSelected(this)"
+    >
+
+    <div 
+     id="dropArea"
+    class="bg-[#2d1b4d] border border-purple-500/20 rounded-[2rem] p-14 flex flex-col items-center justify-center cursor-pointer hover:border-[#ccff00] transition"
+    onclick="document.getElementById('audioFileInput').click()"
+    >
+
+    <div class="w-16 h-16 bg-[#ccff00] rounded-full flex items-center justify-center mb-6 text-black text-2xl font-bold hover:scale-105 transition">
+      <button onclick="event.stopPropagation();document.getElementById('audioFileInput').click()">↑</button>
+    </div>
+
+    <p class="text-white text-lg mb-2">Drop your audio files here</p>
+
+    <p class="text-gray-400 text-sm mb-6">or</p>
+
+    <button 
+      onclick="event.stopPropagation();document.getElementById('audioFileInput').click()"
+      class="bg-[#ccff00] text-black px-8 py-3 rounded-xl font-bold hover:scale-105 transition"
+    >
+    Browse Files
+    </button>
+
+    <div class="flex justify-between w-full mt-6 text-xs text-gray-400">
+      <span>● Maximum: 50MB</span>
+      <span>● MP3, WAV, OGG, M4A</span>
+    </div>
+
+   </div>
+</div>
+
+  <!-- LINK UI -->
+  <div id="ui-link" class="content-card p-12 detect-card hidden mx-auto max-w-2xl">
+    <div class="icon-circle">🔗</div>
+    <p class="text-xl mb-6 font-semibold">Paste the URL link here</p>
+    <input type="text" id="urlInput" placeholder="https://..." class="w-full max-w-md bg-black/40 border border-purple-500 rounded-xl p-4 text-white mb-6 outline-none focus:border-[#ccff00]">
+    <br>
+    <button type="button" onclick="processLink()" class="bg-[#ccff00] text-black px-10 py-2 rounded-lg font-black uppercase">Analyze Link</button>
+  </div>
+
+  <!-- LIVE RECORDING UI -->
+  <div id="ui-live" class="detect-card hidden mx-auto max-w-3xl">
+    <div class="flex flex-col items-center">
+
+      <div class="w-full bg-[#2d1b4d] rounded-[2.5rem] p-12 mb-4 min-h-[220px] flex flex-col justify-center items-center border border-white/5 relative">
+        <div id="live-start-state" class="flex flex-col items-center">
+          <p class="text-gray-400 text-xl font-light mb-8">You speak, we capture every word.</p>
+          <button onclick="startRecording()" class="bg-[#ccff00] text-black px-10 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg">
+            🎙️ Start Talking
+          </button>
+        </div>
+        <div id="live-active-state" class="hidden flex flex-col items-center w-full">
+          <p id="liveText" class="text-gray-300 text-lg text-left w-full opacity-80 mb-8">
+              Listening...
+          </p>
+          <button onclick="stopRecording()" class="bg-[#f44336] hover:bg-red-700 text-white px-8 py-3 rounded-xl flex items-center gap-4 transition-all hover:scale-105 shadow-lg">
+            <span class="flex items-center gap-2">
+              <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+              <span id="timer" class="font-mono text-sm">00:00</span>
+            </span>
+            <span class="font-bold border-l border-white/30 pl-4 uppercase text-sm">Stop Recording</span>
+          </button>
+        </div>
+        <p class="absolute bottom-4 right-8 text-[10px] opacity-60 font-bold tracking-widest text-white">● RECORD 15 - 60 SECONDS</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- READY UI -->
+  <div id="ui-ready" class="content-card p-12 detect-card hidden mx-auto max-w-2xl">
+    <div class="w-14 h-14 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl">🎵</div>
+    <p id="readyFileName" class="text-xl mb-2 font-semibold italic text-[#ccff00]">audio_session_data.mp3</p>
+    <p class="text-xs opacity-50 mb-8 font-bold text-white">SOURCE CAPTURED & READY</p>
+    <button id="analyzeNowBtn" type="button" onclick="runFinalAnalysis()" class="bg-[#ccff00] text-black px-12 py-3 rounded-lg font-black uppercase tracking-widest hover:scale-105 transition">Analyze Now</button>
+    <button onclick="setMode('upload')"
+      class="bg-gray-700 text-white px-10 py-3 rounded-lg font-black uppercase tracking-widest hover:bg-gray-600 hover:scale-105 transition">
+      Cancel
+    </button>
+
+</div>
+
+  <!-- ANALYSIS UI -->
+  <div id="ui-analysis" class="content-card p-12 detect-card hidden mx-auto max-w-2xl">
+    <p class="text-sm italic mb-2 opacity-70 text-white">Generating Results</p>
+    <div class="bg-black/40 rounded-3xl p-8 border border-purple-500/20">
+      <div class="waveform-visual mb-4"></div>
+      <p class="text-sm mb-4 tracking-[0.5em] uppercase font-bold text-[#ccff00]">Analyzing.....</p>
+      <div class="w-full bg-black h-8 rounded-md overflow-hidden relative border border-gray-800">
+        <div id="progress-bar"></div>
+        <span id="progress-text" class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-[#ccff00]">0%</span>
+      </div>
+    </div>
+  </div>
+  </div>   <!-- END OF ui-analysis -->
+
+</section>
+
+<section id="result-page" class="page-section w-full max-w-6xl text-center">
+  <h2 class="text-5xl font-black uppercase text-white mb-10 tracking-wide">How can we help you ?</h2>
+
+  <div class="w-28 h-28 mx-auto mb-8 rounded-full overflow-hidden 
+              flex items-center justify-center 
+              shadow-[0_0_20px_rgba(168,85,247,0.35)]
+              hover:scale-105 transition-transform duration-300
+              hover:shadow-[0_0_30px_rgba(204,255,0,0.6)]">
+    <img src="Photo/Logo1.png" alt="MyVoiceGuard Logo" class="w-full h-full object-cover">
+  </div>
+
+  <div class="flex justify-center gap-4 mb-4">
+    <button type="button" onclick="setMode('upload'); showPage('detection')" class="bg-[#3a1c71] px-6 py-2 rounded-full border border-purple-400 text-[10px] font-bold uppercase hover:bg-purple-800 transition text-white">
+      Upload File
+    </button>
+    <button type="button" onclick="setMode('link'); showPage('detection')" class="bg-[#3a1c71] px-6 py-2 rounded-full border border-purple-400 text-[10px] font-bold uppercase hover:bg-purple-800 transition text-white">
+      Link URL
+    </button>
+    <button type="button" onclick="setMode('live'); showPage('detection')" class="bg-[#3a1c71] px-6 py-2 rounded-full border border-purple-400 text-[10px] font-bold uppercase hover:bg-purple-800 transition text-white">
+      Live Recording
+    </button>
+  </div>
+
+  <div class="flex flex-col items-center gap-2 mb-6">
+    <div class="flex items-center gap-2">
+      <span class="text-white text-md">(( ● ))</span>
+      <p class="text-sm font-semibold text-white">Upload Your Voice Now</p>
+    </div>
+    <p class="text-xs italic opacity-80 text-white">We Will Analyze For You!</p>
+  </div>
+
+<!-- RESULT UI -->
+<div id="ui-result" class="hidden w-full max-w-6xl mx-auto mt-10">
+
+<div class="text-center mb-8">
+  <p class="text-5xl font-light text-white">
+    Result:
+    <span id="resultHeadline" class="font-semibold text-[#00ff66]">REAL</span>
+  </p>
+</div>
+
+<div class="bg-[#3a1c71] rounded-[2.5rem] p-8 grid grid-cols-3 gap-6 items-center">
+
+<!-- LEFT PANEL -->
+<div class="text-center border-r border-white/20 pr-6">
+
+<h3 id="accuracyText" class="text-3xl font-black mb-4">
+0 %<br>Accuracy<br>Voice
+</h3>
+
+<div class="mt-12">
+<h3 id="timeText" class="text-3xl font-black">
+Time to detect:<br>0 Seconds
+</h3>
+</div>
+
+</div>
+
+
+<!-- CENTER PANEL -->
+<div class="text-center px-6">
+
+<img id="personImage"
+src=""
+class="w-48 mx-auto mb-4 rounded">
+
+<h3 id="personName" class="font-bold text-lg mb-2">
+Unknown Speaker
+</h3>
+
+<p id="personInfo"
+class="text-sm text-left leading-relaxed">
+Speaker information will appear here
+</p>
+
+</div>
+
+
+<!-- RIGHT PANEL -->
+<div class="text-center border-l border-white/20 pl-6">
+
+<h3 class="text-3xl font-black mb-6">
+DeepFake Detection:<br>
+<span id="deepfakeLabel" class="text-[#00ff66]">Unknown</span>
+</h3>
+
+<div class="text-sm mt-10">
+<p class="font-bold mb-2">Source Audio:</p>
+<p id="sourceText" class="break-all">
+None
+</p>
+</div>
+
+</div>
+
+</div>
+
+<!-- BUTTONS -->
+<div class="flex justify-center gap-6 mt-8">
+
+<button onclick="submitAnother()" 
+class="bg-[#ccff00] text-black px-8 py-3 rounded-full font-bold hover:scale-105 transition">
+Submit Another
+</button>
+
+<button onclick="downloadPDF()" 
+class="bg-[#ccff00] text-black px-8 py-3 rounded-full font-bold hover:scale-105 transition">
+Download PDF
+</button>
+
+<button onclick="shareResult()" 
+class="bg-[#ccff00] text-black px-8 py-3 rounded-full font-bold hover:scale-105 transition">
+Share
+</button>
+
+</div>
+</div>
+
+</div>
+
+</section>
+
+        <section id="about" class="page-section w-full max-w-6xl text-center mx-auto">
+
+    <!-- ABOUT TITLE -->
+    <h2 class="text-5xl font-black uppercase text-white mb-10 tracking-wide">ABOUT US</h2>
+
+    <!-- CIRCULAR LOGO IMAGE -->
+    <div class="w-56 h-56 mx-auto mb-10 rounded-full overflow-hidden 
+    flex items-center justify-center 
+    shadow-[0_0_20px_rgba(168,85,247,0.35)]
+    hover:scale-105 transition-transform duration-300
+    hover:shadow-[0_0_30px_rgba(204,255,0,0.6)]">
+        <img src="Photo\Logo1.png" 
+             alt="MyVoiceGuard Logo" 
+             class="w-full h-full object-cover rounded-full">
+    </div>
+
+    <!-- DESCRIPTION -->
+    <p class="text-lg leading-relaxed max-w-4xl mx-auto mb-20 opacity-90 font-medium text-white">
+        MyVoiceGuard is a platform designed to detect voice deepfakes and impersonations, 
+        with a focus on protecting Malaysians from misleading or manipulated audio content. 
+        Using advanced audio analysis and speaker verification, MyVoiceGuard identifies whether 
+        a voice recording is authentic, cloned, or impersonated. Our mission is to support 
+        digital safety and help reduce the spread of misinformation in Malaysia.
+    </p>
+
+    <!-- OUR TEAM -->
+    <h2 class="text-4xl font-black text-white mb-8">
+        Our Team
+    </h2>
+
+    <!-- TEAM LABELS -->
+    <div class="flex justify-between text-xl font-semibold text-white mb-6 px-10">
+        <span>Developers</span>
+        <span>Supervisor</span>
+    </div>
+
+    <!-- TEAM MEMBERS -->
+    <div class="flex justify-between gap-10 px-6">
+
+        <!-- Developer -->
+        <div class="flex-1 bg-[#3a1c71] py-5 rounded-full 
+                    border border-purple-400 text-lg font-semibold text-white
+                    shadow-lg">
+            Nuranis Najwa Binti Mohamed Faizal
+        </div>
+
+        <!-- Supervisor -->
+        <div class="flex-1 bg-[#3a1c71] py-5 rounded-full 
+                    border border-purple-400 text-lg font-semibold text-white
+                    shadow-lg">
+            Asst. Prof. Dr. Andi Fitriah Binti Abdul Kadir
+        </div>
+
+    </div>
+
+</section>
+
+        <section id="contact" class="page-section w-full max-w-4xl text-center">
+<h2 class="text-5xl font-black uppercase text-white mb-10 tracking-wide"> Contact US</h2>            
+        <div class="grid md:grid-cols-2 gap-8">
+                <div class="content-card p-12 flex flex-col items-center">
+                    <h3 class="text-2xl font-black mb-6 text-white">EMAIL</h3>
+                    <div class="text-5xl mb-6">📧</div>
+                    <p class="text-[15px] font-bold opacity-80 text-white">MyVoiceGuard@gmail.com</p>
+                </div>
+                <div class="content-card p-12 flex flex-col items-center">
+                    <h3 class="text-2xl font-black mb-6 text-white">ADDRESS</h3>
+                    <div class="text-5xl mb-6">🏢</div>
+                    <p class="text-[15px] leading-tight font-bold opacity-70 px-4 text-white">Kulliyyah of Information & Communication Technology, International Islamic University Malaysia, P.O. Box 10, 50728, Kuala Lumpur, MALAYSIA</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-[#ccff00] text-black text-center py-2 text-[10px] font-black uppercase tracking-widest">
+        © 2026 MyVoiceGuard. All rights reserved.
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="script.js?v=20260226"></script>
+
+</body>
+</html>

@@ -1,0 +1,37 @@
+MyVoiceGuard Training Report
+==================================================
+REAL : 600   FAKE : 600
+Features: 44   Labels: 0=FAKE  1=REAL
+
+5-fold CV: Accuracy=0.9950 F1=0.9950
+
+Validation (80/20 split):
+Accuracy=1.0000 F1=1.0000 Precision=1.0000 Recall=1.0000
+Confusion:
+[[120   0]
+ [  0 120]]
+              precision    recall  f1-score   support
+
+     FAKE(0)       1.00      1.00      1.00       120
+     REAL(1)       1.00      1.00      1.00       120
+
+    accuracy                           1.00       240
+   macro avg       1.00      1.00      1.00       240
+weighted avg       1.00      1.00      1.00       240
+
+
+Validation ROC-AUC=1.0000
+ROC-AUC: 1.0000
+              precision    recall  f1-score   support
+
+     FAKE(0)       1.00      1.00      1.00       600
+     REAL(1)       1.00      1.00      1.00       600
+
+    accuracy                           1.00      1200
+   macro avg       1.00      1.00      1.00      1200
+weighted avg       1.00      1.00      1.00      1200
+
+In-sample confusion:
+[[600   0]
+ [  0 600]]
+Time: 3.4s

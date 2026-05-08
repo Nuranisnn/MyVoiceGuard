@@ -1,0 +1,117 @@
+/* 1. CORE BRAND COLORS */
+:root {
+    --neon-lime: #ccff00;
+    --deep-purple: #2d1b4d;
+    --dark-bg: #05051a;
+    --accent-purple: #3a1c71;
+    --nav-gradient: linear-gradient(90deg, #331a5e 0%, #2d1b4d 100%);
+}
+
+/* 2. ATMOSPHERIC BACKGROUND */
+body {
+    background-image:
+        linear-gradient(rgba(5,5,26,0.75), rgba(5,5,26,0.75)),
+        url('Photo/background.jpg');
+
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+
+    color: white;
+    font-family: 'Inter', -apple-system, sans-serif;
+    margin: 0;
+}
+
+/* 3. NAVIGATION PILL SHAPE */
+.nav-pill {
+    background: var(--nav-gradient);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+}
+
+/* 4. CONTENT CARDS (Glassmorphism) */
+.content-card {
+    background-color: rgba(45, 27, 77, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    border-radius: 2.5rem; /* Large rounded corners from images */
+}
+
+/* 5. NEON LIME BUTTONS */
+.btn-neon {
+    background-color: var(--neon-lime);
+    color: #000;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 0 15px rgba(204, 255, 0, 0.3);
+    transition: all 0.3s ease-in-out;
+}
+
+.btn-neon:hover {
+    box-shadow: 0 0 30px rgba(204, 255, 0, 0.6);
+    transform: scale(1.05);
+}
+
+/* 6. DETECTION UI ELEMENTS */
+/* Waveform Placeholder Animation */
+.waveform-visual {
+    height: 60px;
+    width: 100%;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--neon-lime) 0px,
+        var(--neon-lime) 2px,
+        transparent 2px,
+        transparent 12px
+    );
+    mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
+    animation: waveShift 2s infinite linear;
+    opacity: 0.8;
+}
+
+@keyframes waveShift {
+    from { background-position: 0 0; }
+    to { background-position: 48px 0; }
+}
+
+/* Progress Bar Container */
+.progress-container {
+    background: #000;
+    border: 1px solid #333;
+    border-radius: 8px;
+    height: 35px;
+    overflow: hidden;
+    position: relative;
+}
+
+#bar {
+    background-color: #000; /* As seen in Detection 1.4.jpg */
+    border-right: 3px solid var(--neon-lime);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 7. ERROR MODAL STYLING (Error 1.jpg) */
+#error-modal .modal-content {
+    background: #fff;
+    color: #000;
+    border-radius: 1.5rem;
+    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+/* 8. FOOTER */
+footer {
+    background-color: var(--neon-lime);
+    color: #000;
+    font-weight: 900;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
