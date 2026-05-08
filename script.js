@@ -8,13 +8,7 @@ const API_URL = (() => {
     const host = (typeof window !== "undefined" && window.location && window.location.hostname) || "";
     const stripSlash = (u) => String(u || "").replace(/\/+$/, "");
 
-    // Dev di PC → panggil Flask tempatan
-    if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
-        return "http://127.0.0.1:5000";
-    }
-
-    // Jika laman web dibuka dari hostname yang sama dengan MVG_PRODUCTION_API
-    // (contoh: HTML di-serve dari app Render yang sama) → guna same-origin, elak hardcode berganda
+    // Backend hanya di Render (bukan Flask di PC). Same-origin jika frontend & API satu hostname.
     try {
         const apiHost = new URL(MVG_PRODUCTION_API).hostname;
         if (apiHost && host === apiHost) {
@@ -24,7 +18,6 @@ const API_URL = (() => {
         /* MVG_PRODUCTION_API invalid — fall through */
     }
 
-    // Netlify / domain lain → API ke Render
     return stripSlash(MVG_PRODUCTION_API);
 })();
 console.info("[MyVoiceGuard] API_URL =", API_URL);
@@ -74,21 +67,8 @@ function agentLog(hypothesisId, location, message, data, runId = "pre-fix") {
 // #endregion
 
 async function fetchWithApiFallback(path, options) {
-    const candidates = [];
     const base = (API_URL || "").replace(/\/+$/, "");
-    if (base) candidates.push(base);
-    // Production (HTTPS / Netlify): do not fall back to localhost — it always fails and hides the real API error.
-    const host = (typeof window !== "undefined" && window.location && window.location.hostname) || "";
-    const isSecureProd =
-        (typeof window !== "undefined" &&
-            window.location &&
-            window.location.protocol === "https:") ||
-        /\.netlify\.app$/i.test(host);
-    if (!isSecureProd) {
-        for (const alt of ["http://127.0.0.1:5000", "http://localhost:5000", "http://[::1]:5000"]) {
-            if (!candidates.includes(alt)) candidates.push(alt);
-        }
-    }
+    const candidates = base ? [base] : [];
 
     let lastErr = null;
     for (const baseUrl of candidates) {
@@ -130,7 +110,11 @@ async function checkBackend() {
 
 window.addEventListener("load", async () => {
     const ok = await checkBackend();
-    console.log(ok ? "✅ Backend connected!" : "⚠️ Backend not running – run: python app.py");
+    console.log(
+        ok
+            ? "✅ Backend connected!"
+            : "⚠️ API tidak menjawab — semak " + API_URL + "/health (Render mungkin sleep / down)."
+    );
     // Default behavior requested: refresh opens Home page.
     showPage("home");
 });
@@ -545,17 +529,13 @@ async function runFinalAnalysis() {
         if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
             msg += "Network error while calling API.\n";
             msg += `API URL: ${API_URL}\n`;
-            if (String(API_URL || "").startsWith("https://")) {
-                msg +=
-                    "\nProduction checks:\n" +
-                    "1. Open this URL in a new tab: " +
-                    API_URL +
-                    "/health\n" +
-                    "2. Render free tier may be sleeping — wait ~60s and retry.\n" +
-                    "3. If /health works but upload fails, check Render Logs for /predict-file (timeout, ffmpeg, or memory).";
-            } else {
-                msg += "1. Open terminal\n2. Run: python app.py\n3. Check: http://127.0.0.1:5000/health";
-            }
+            msg +=
+                "\nSemakan:\n" +
+                "1. Buka tab baru: " +
+                API_URL +
+                "/health\n" +
+                "2. Free tier Render boleh sleep — tunggu ~60s dan cuba lagi.\n" +
+                "3. Jika /health OK tapi upload gagal, semak Render Logs untuk /predict-file (timeout, ffmpeg, memori).";
         } else {
             msg += error.message;
         }
