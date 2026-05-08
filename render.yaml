@@ -1,0 +1,23 @@
+# Blueprint Render — backend MyVoiceGuard (Docker + ffmpeg untuk MP3).
+# https://render.com/docs/blueprint-spec
+#
+# Cara guna (pilih satu):
+# A) Dashboard Render → New → Blueprint → pilih repo ini → Apply (ikut render.yaml)
+# B) Service sedia ada → Settings → Build & Deploy → Blueprint: connect repo
+#    → pastikan Environment = Docker, Dockerfile path = Dockerfile → Save → Manual Deploy
+#
+# URL API dalam script.js / Netlify mesti sama dengan URL service ini, contoh:
+#   https://myvoiceguard-1.onrender.com
+# Jika nama service lain, tukar MVG_PRODUCTION_API dalam script.js.
+services:
+  - type: web
+    # Guna nama yang sama dengan subdomain Render anda (contoh myvoiceguard-1.onrender.com)
+    name: myvoiceguard-1
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
