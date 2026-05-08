@@ -3,12 +3,12 @@
 // =========================
 const API_URL = (() => {
     const host = window.location.hostname;
-    // [::1] must hit Flask locally — otherwise fetch goes to /.netlify/... and nothing updates.
+    // Local dev → Flask local
     if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
         return "http://127.0.0.1:5000";
     }
-    // Netlify production/staging path
-    return "/.netlify/functions/api";
+    // Production (Netlify / domain lain) → Flask di Render
+    return "https://myvoiceguard-1.onrender.com";
 })();
 console.info("[MyVoiceGuard] API_URL =", API_URL);
 const THRESHOLD_REAL = 90;   // >=90% REAL; API may send threshold_used (same value)
