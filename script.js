@@ -1,14 +1,31 @@
 // =========================
 // CONFIG
 // =========================
+// Production API (Flask on Render). Tukar URL ini jika subdomain Render / custom domain lain.
+const MVG_PRODUCTION_API = "https://myvoiceguard-1.onrender.com";
+
 const API_URL = (() => {
-    const host = window.location.hostname;
-    // Local dev → Flask local
+    const host = (typeof window !== "undefined" && window.location && window.location.hostname) || "";
+    const stripSlash = (u) => String(u || "").replace(/\/+$/, "");
+
+    // Dev di PC → panggil Flask tempatan
     if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
         return "http://127.0.0.1:5000";
     }
-    // Production (Netlify / domain lain) → Flask di Render
-    return "https://myvoiceguard-1.onrender.com";
+
+    // Jika laman web dibuka dari hostname yang sama dengan MVG_PRODUCTION_API
+    // (contoh: HTML di-serve dari app Render yang sama) → guna same-origin, elak hardcode berganda
+    try {
+        const apiHost = new URL(MVG_PRODUCTION_API).hostname;
+        if (apiHost && host === apiHost) {
+            return stripSlash(window.location.origin);
+        }
+    } catch (_) {
+        /* MVG_PRODUCTION_API invalid — fall through */
+    }
+
+    // Netlify / domain lain → API ke Render
+    return stripSlash(MVG_PRODUCTION_API);
 })();
 console.info("[MyVoiceGuard] API_URL =", API_URL);
 const THRESHOLD_REAL = 90;   // >=90% REAL; API may send threshold_used (same value)
@@ -60,8 +77,17 @@ async function fetchWithApiFallback(path, options) {
     const candidates = [];
     const base = (API_URL || "").replace(/\/+$/, "");
     if (base) candidates.push(base);
-    for (const alt of ["http://127.0.0.1:5000", "http://localhost:5000", "http://[::1]:5000"]) {
-        if (!candidates.includes(alt)) candidates.push(alt);
+    // Production (HTTPS / Netlify): do not fall back to localhost — it always fails and hides the real API error.
+    const host = (typeof window !== "undefined" && window.location && window.location.hostname) || "";
+    const isSecureProd =
+        (typeof window !== "undefined" &&
+            window.location &&
+            window.location.protocol === "https:") ||
+        /\.netlify\.app$/i.test(host);
+    if (!isSecureProd) {
+        for (const alt of ["http://127.0.0.1:5000", "http://localhost:5000", "http://[::1]:5000"]) {
+            if (!candidates.includes(alt)) candidates.push(alt);
+        }
     }
 
     let lastErr = null;
@@ -519,7 +545,17 @@ async function runFinalAnalysis() {
         if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
             msg += "Network error while calling API.\n";
             msg += `API URL: ${API_URL}\n`;
-            msg += "1. Open terminal\n2. Run: python app.py\n3. Check: http://127.0.0.1:5000/health";
+            if (String(API_URL || "").startsWith("https://")) {
+                msg +=
+                    "\nProduction checks:\n" +
+                    "1. Open this URL in a new tab: " +
+                    API_URL +
+                    "/health\n" +
+                    "2. Render free tier may be sleeping — wait ~60s and retry.\n" +
+                    "3. If /health works but upload fails, check Render Logs for /predict-file (timeout, ffmpeg, or memory).";
+            } else {
+                msg += "1. Open terminal\n2. Run: python app.py\n3. Check: http://127.0.0.1:5000/health";
+            }
         } else {
             msg += error.message;
         }
