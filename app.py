@@ -1,8 +1,16 @@
+import os
+
+# Render free tier + librosa/numba JIT can OOM with multi-threaded BLAS. Set before numpy/scipy.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
+
 from flask import Flask, request, jsonify, make_response, send_from_directory
 from flask_cors import CORS
 import numpy as np
 import time
-import os
 import uuid
 import warnings
 import tempfile
@@ -109,6 +117,37 @@ reference_folder = os.path.join(BASE_DIR, "reference_voice")
 temp_folder      = os.path.join(tempfile.gettempdir(), "myvoiceguard_temp")
 os.makedirs(reference_folder, exist_ok=True)
 os.makedirs(temp_folder,      exist_ok=True)
+
+
+def _infer_low_memory_mode():
+    """
+    Render free tier (~512MB) SIGKILLs workers during librosa/numba JIT on long audio.
+    RENDER is set by Render.com; MV_LOW_MEMORY forces the same caps elsewhere.
+    MV_HIGH_MEMORY=1 disables caps (e.g. paid instance).
+    """
+    if os.environ.get("MV_HIGH_MEMORY", "").strip().lower() in ("1", "true", "yes", "on"):
+        return False
+    if os.environ.get("MV_LOW_MEMORY", "").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    return bool(os.environ.get("RENDER"))
+
+
+def _infer_max_audio_seconds():
+    """Max seconds loaded into RAM for /predict-* scoring (not reference_voice clips)."""
+    raw = os.environ.get("MV_INFER_MAX_AUDIO_SEC", "").strip()
+    if raw:
+        try:
+            return float(max(15.0, min(600.0, float(raw))))
+        except ValueError:
+            pass
+    return 90.0 if _infer_low_memory_mode() else 300.0
+
+
+def _infer_segment_defaults():
+    """(segment_sec, hop_sec, max_segments) when MV_INFER_* env vars are unset."""
+    if _infer_low_memory_mode():
+        return 12.0, 6.0, 6
+    return 18.0, 9.0, 18
 
 
 def _ffmpeg_available():
@@ -434,7 +473,20 @@ def convert_to_wav(input_path, output_path):
     if LIBROSA_OK:
         try:
             import soundfile as sf
-            y, _ = librosa.load(input_path, sr=16000, mono=True)
+
+            conv_raw = os.environ.get("MV_CONVERT_MAX_AUDIO_SEC", "").strip()
+            if conv_raw:
+                try:
+                    cmax = float(max(10.0, min(600.0, float(conv_raw))))
+                except ValueError:
+                    cmax = None
+            else:
+                cmax = 120.0 if _infer_low_memory_mode() else None
+            if cmax is not None:
+                y, _ = librosa.load(input_path, sr=16000, mono=True, duration=cmax)
+                print(f"[CONVERT] librosa decode capped at {cmax}s (low-memory host)")
+            else:
+                y, _ = librosa.load(input_path, sr=16000, mono=True)
             sf.write(output_path, y, 16000)
             print(f"[CONVERT] librosa OK ({len(y)/16000:.1f}s)")
             return True
@@ -502,18 +554,19 @@ def extract_features(wav_path):
 
 def _segment_audio_chunks(y_full, sr=16000):
     """Sliding windows (mono samples). Same defaults as extract_features_for_predict."""
+    dw, dh, dm = _infer_segment_defaults()
     try:
-        wsec = float(os.environ.get("MV_INFER_SEGMENT_SEC", "18").strip() or "18")
+        wsec = float(os.environ.get("MV_INFER_SEGMENT_SEC", str(dw)).strip() or str(dw))
     except Exception:
-        wsec = 18.0
+        wsec = dw
     try:
-        hsec = float(os.environ.get("MV_INFER_HOP_SEC", "9").strip() or "9")
+        hsec = float(os.environ.get("MV_INFER_HOP_SEC", str(dh)).strip() or str(dh))
     except Exception:
-        hsec = 9.0
+        hsec = dh
     try:
-        max_seg = int(os.environ.get("MV_INFER_MAX_SEGMENTS", "18").strip() or "18")
+        max_seg = int(os.environ.get("MV_INFER_MAX_SEGMENTS", str(dm)).strip() or str(dm))
     except Exception:
-        max_seg = 18
+        max_seg = dm
     wsec = max(6.0, min(28.0, wsec))
     hsec = max(2.0, min(wsec - 0.5, hsec))
     max_seg = max(1, min(48, max_seg))
@@ -538,8 +591,12 @@ def extract_features_for_predict(wav_path, start_offset_sec=0.0):
         return np.zeros(44)
     try:
         off = float(max(0.0, start_offset_sec))
-        y_full, sr = librosa.load(wav_path, sr=16000, mono=True, offset=off)
+        max_dur = _infer_max_audio_seconds()
+        y_full, sr = librosa.load(
+            wav_path, sr=16000, mono=True, offset=off, duration=max_dur
+        )
         chunks = _segment_audio_chunks(y_full, sr)
+        del y_full
         vecs = [_features_from_audio_y(c, sr) for c in chunks]
         out = np.mean(np.stack(vecs, axis=0), axis=0)
         print(
@@ -572,10 +629,18 @@ def model_predict_multisegment(wav_path, start_offset_sec=0.0):
         return out
     try:
         off = float(max(0.0, start_offset_sec))
+        max_dur = _infer_max_audio_seconds()
         if off > 0:
             print(f"[MODEL] librosa offset={off:.2f}s (YouTube start param / speech skip)")
-        y_full, sr = librosa.load(wav_path, sr=16000, mono=True, offset=off)
+        print(
+            f"[MODEL] librosa load duration_cap={max_dur}s low_memory_mode="
+            f"{_infer_low_memory_mode()}"
+        )
+        y_full, sr = librosa.load(
+            wav_path, sr=16000, mono=True, offset=off, duration=max_dur
+        )
         chunks = _segment_audio_chunks(y_full, sr)
+        del y_full
         feats44 = [_features_from_audio_y(c, sr) for c in chunks]
         out["features_for_speaker"] = np.mean(np.stack(feats44, axis=0), axis=0)
         out["n_segments"] = len(feats44)
@@ -1350,13 +1415,21 @@ def health():
     else:
         model_classes = [str(x) for x in list(classes_attr)]
 
+    _seg_def = _infer_segment_defaults()
     payload = {
         "status":           "OK",
-        "live_pipeline_version": "6-webrtc-vad+steady-noise",
+        "live_pipeline_version": "7-render-oom-mitigations",
         "model":            model_status,
         "librosa":          LIBROSA_OK,
         "pydub":            PYDUB_OK,
         "ffmpeg_in_path":   _ffmpeg_available(),
+        "infer_low_memory_mode": _infer_low_memory_mode(),
+        "infer_max_audio_sec":   _infer_max_audio_seconds(),
+        "infer_segment_defaults": {
+            "segment_sec": _seg_def[0],
+            "hop_sec": _seg_def[1],
+            "max_segments_default": _seg_def[2],
+        },
         "model_classes":    model_classes,
         "model_features":   _get_model_expected_features(),
         "reference_voices": refs,
