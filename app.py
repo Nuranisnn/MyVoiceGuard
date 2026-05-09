@@ -11,6 +11,12 @@ os.environ.setdefault("NUMBA_NUM_THREADS", "1")
 if os.environ.get("MV_ENABLE_NUMBA_JIT", "").strip().lower() not in ("1", "true", "yes", "on"):
     os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
+# On Render/Python 3.14, librosa.feature can still trigger heavy numba/llvmlite paths.
+# Default to numpy-only feature extractor in production unless explicitly enabled.
+if os.environ.get("MV_ENABLE_LIBROSA_FEATURES", "").strip().lower() not in ("1", "true", "yes", "on"):
+    if os.environ.get("RENDER"):
+        os.environ.setdefault("MV_DISABLE_LIBROSA_FEATURES", "1")
+
 from flask import Flask, request, jsonify, make_response, send_from_directory
 from flask_cors import CORS
 import numpy as np
@@ -582,6 +588,15 @@ def _features_from_audio_y(y, sr=16000):
     max_samples = int(30 * sr)
     if y.size > max_samples:
         y = y[:max_samples].copy()
+    disable_librosa_features = os.environ.get("MV_DISABLE_LIBROSA_FEATURES", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if disable_librosa_features:
+        return _features_from_audio_y_numpy_fallback(y, sr)
+
     try:
         mfcc        = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
         mfcc_mean   = np.mean(mfcc, axis=1)
@@ -1649,6 +1664,7 @@ def health():
         "pydub":            PYDUB_OK,
         "ffmpeg_in_path":   _ffmpeg_available(),
         "numba_disable_jit": os.environ.get("NUMBA_DISABLE_JIT", "0"),
+        "disable_librosa_features": os.environ.get("MV_DISABLE_LIBROSA_FEATURES", "0"),
         "infer_low_memory_mode": _infer_low_memory_mode(),
         "infer_max_audio_sec":   _infer_max_audio_seconds(),
         "infer_segment_defaults": {
