@@ -386,6 +386,62 @@ def _wav_duration_seconds(path: str):
         return None
 
 
+def _load_audio_mono_16k(path: str, offset_sec: float = 0.0, duration_sec=None):
+    """
+    Robust loader for inference paths.
+    Prefer soundfile (no librosa/numba resample JIT), fallback to librosa.
+    Returns (y_float32_mono, sr=16000).
+    """
+    target_sr = 16000
+    off = float(max(0.0, offset_sec or 0.0))
+    dur = None if duration_sec is None else float(max(0.0, duration_sec))
+
+    # Fast path: soundfile read with frame slicing
+    try:
+        import soundfile as sf
+
+        info = sf.info(path)
+        in_sr = int(info.samplerate or target_sr)
+        start_frame = int(off * in_sr)
+        n_frames = -1 if dur is None else int(max(1, dur * in_sr))
+        y, sr = sf.read(
+            path,
+            start=start_frame,
+            frames=n_frames,
+            dtype="float32",
+            always_2d=True,
+        )
+        if y is None or len(y) == 0:
+            return np.zeros(1600, dtype=np.float32), target_sr
+        y = np.mean(y, axis=1).astype(np.float32, copy=False)
+        sr = int(sr or in_sr or target_sr)
+        if sr == target_sr:
+            return y, target_sr
+
+        # Lightweight linear resample to 16k (avoids scipy/librosa heavy paths)
+        n_in = len(y)
+        if n_in < 2:
+            return np.zeros(1600, dtype=np.float32), target_sr
+        n_out = int(max(1, round(n_in * target_sr / float(sr))))
+        x_old = np.linspace(0.0, 1.0, num=n_in, endpoint=True, dtype=np.float32)
+        x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=True, dtype=np.float32)
+        y_rs = np.interp(x_new, x_old, y).astype(np.float32, copy=False)
+        return y_rs, target_sr
+    except Exception as e:
+        print(f"[AUDIO] soundfile load failed: {e}")
+
+    # Fallback: librosa
+    try:
+        y, _ = librosa.load(path, sr=target_sr, mono=True, offset=off, duration=dur)
+        y = np.asarray(y, dtype=np.float32).flatten()
+        if y.size == 0:
+            y = np.zeros(1600, dtype=np.float32)
+        return y, target_sr
+    except Exception as e:
+        print(f"[AUDIO] librosa fallback load failed: {e}")
+        return np.zeros(1600, dtype=np.float32), target_sr
+
+
 def _youtube_time_token_to_seconds(token: str) -> float:
     """Parse YouTube t= values: 75, 75s, 1m15s, 1h2m3s."""
     import re
@@ -548,7 +604,7 @@ def extract_features(wav_path):
     if not LIBROSA_OK:
         return np.zeros(44)
     try:
-        y, sr = librosa.load(wav_path, sr=16000, duration=30, mono=True)
+        y, sr = _load_audio_mono_16k(wav_path, duration_sec=30.0)
         feats = _features_from_audio_y(y, sr)
         print(f"[FEATURES] shape={feats.shape}  norm={np.linalg.norm(feats):.2f}")
         return feats
@@ -597,8 +653,8 @@ def extract_features_for_predict(wav_path, start_offset_sec=0.0):
     try:
         off = float(max(0.0, start_offset_sec))
         max_dur = _infer_max_audio_seconds()
-        y_full, sr = librosa.load(
-            wav_path, sr=16000, mono=True, offset=off, duration=max_dur
+        y_full, sr = _load_audio_mono_16k(
+            wav_path, offset_sec=off, duration_sec=max_dur
         )
         chunks = _segment_audio_chunks(y_full, sr)
         del y_full
@@ -641,8 +697,8 @@ def model_predict_multisegment(wav_path, start_offset_sec=0.0):
             f"[MODEL] librosa load duration_cap={max_dur}s low_memory_mode="
             f"{_infer_low_memory_mode()}"
         )
-        y_full, sr = librosa.load(
-            wav_path, sr=16000, mono=True, offset=off, duration=max_dur
+        y_full, sr = _load_audio_mono_16k(
+            wav_path, offset_sec=off, duration_sec=max_dur
         )
         chunks = _segment_audio_chunks(y_full, sr)
         del y_full
@@ -1102,7 +1158,7 @@ def _live_speech_suitability(wav_path, transcript_empty=False):
     if not LIBROSA_OK:
         return True, {"librosa": False}, None
     try:
-        y, sr = librosa.load(wav_path, sr=16000, mono=True)
+        y, sr = _load_audio_mono_16k(wav_path)
     except Exception as e:
         return True, {"load_error": str(e)[:80]}, None
     y = np.asarray(y, dtype=np.float32)
