@@ -11,10 +11,19 @@ os.environ.setdefault("NUMBA_NUM_THREADS", "1")
 if os.environ.get("MV_ENABLE_NUMBA_JIT", "").strip().lower() not in ("1", "true", "yes", "on"):
     os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
-# On Render/Python 3.14, librosa.feature can still trigger heavy numba/llvmlite paths.
-# Default to numpy-only feature extractor in production unless explicitly enabled.
+# Framework mode: keep inference aligned with train_model.py pipeline by default.
+# (MFCC + delta + spectral extras + RF decision), avoid heuristic overrides.
+MV_STRICT_FRAMEWORK = os.environ.get("MV_STRICT_FRAMEWORK", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+
+# On Render/Python 3.14, librosa.feature can trigger heavy numba/llvmlite paths.
+# Only auto-disable librosa features when NOT in strict framework mode.
 if os.environ.get("MV_ENABLE_LIBROSA_FEATURES", "").strip().lower() not in ("1", "true", "yes", "on"):
-    if os.environ.get("RENDER"):
+    if os.environ.get("RENDER") and not MV_STRICT_FRAMEWORK:
         os.environ.setdefault("MV_DISABLE_LIBROSA_FEATURES", "1")
 
 from flask import Flask, request, jsonify, make_response, send_from_directory
@@ -594,7 +603,12 @@ def _features_from_audio_y(y, sr=16000):
         "yes",
         "on",
     )
+    allow_numpy_fallback = os.environ.get(
+        "MV_ALLOW_NUMPY_FEATURE_FALLBACK", "0" if MV_STRICT_FRAMEWORK else "1"
+    ).strip().lower() in ("1", "true", "yes", "on")
     if disable_librosa_features:
+        if not allow_numpy_fallback:
+            raise RuntimeError("librosa feature path disabled and numpy fallback disabled")
         return _features_from_audio_y_numpy_fallback(y, sr)
 
     try:
@@ -615,6 +629,8 @@ def _features_from_audio_y(y, sr=16000):
     except Exception as e:
         # Render + Python 3.14 may hit librosa/numba incompat ("get_call_template").
         # Fallback keeps inference dynamic using lightweight NumPy-only features.
+        if not allow_numpy_fallback:
+            raise
         print(f"[FEATURES] librosa feature path failed, using numpy fallback: {e}")
         return _features_from_audio_y_numpy_fallback(y, sr)
 
@@ -1086,6 +1102,10 @@ def calibrate_confidence_for_reference_match(
     and cosine to that ref is decent, still apply the reference blend (conservative
     gates) — reduces false FAKE on real Najib/Mahathir YouTube uploads.
     """
+    if MV_STRICT_FRAMEWORK:
+        # In strict framework mode, keep model score unchanged.
+        return confidence
+
     vote = float(vote_real_fraction or 0.0)
     segm = float(segment_mean_raw or 0.0)
     nseg = int(n_segments or 0)
@@ -1713,6 +1733,10 @@ def health():
         "ffmpeg_in_path":   _ffmpeg_available(),
         "numba_disable_jit": os.environ.get("NUMBA_DISABLE_JIT", "0"),
         "disable_librosa_features": os.environ.get("MV_DISABLE_LIBROSA_FEATURES", "0"),
+        "strict_framework_mode": bool(MV_STRICT_FRAMEWORK),
+        "allow_numpy_feature_fallback": os.environ.get(
+            "MV_ALLOW_NUMPY_FEATURE_FALLBACK", "0" if MV_STRICT_FRAMEWORK else "1"
+        ),
         "infer_low_memory_mode": _infer_low_memory_mode(),
         "infer_max_audio_sec":   _infer_max_audio_seconds(),
         "infer_segment_defaults": {
