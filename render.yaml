@@ -21,3 +21,10 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
+      # Render sets RENDER=true → app uses shorter audio + fewer segments (OOM fix).
+      # On a larger paid instance you may add:
+      #   MV_HIGH_MEMORY = 1
+      # Optional overrides:
+      #   MV_INFER_MAX_AUDIO_SEC = 180
+      #   MV_CONVERT_MAX_AUDIO_SEC = 180
+      #   MV_INFER_MAX_SEGMENTS = 12
