@@ -105,6 +105,14 @@ def handle_unexpected_exception(e: Exception):
 # Binary thresholds: >=90% REAL, <90% FAKE (all speakers).
 THRESHOLD_REAL = 90
 THRESHOLD_FAKE = 90
+# Uploads are noisier than curated training clips; allow a softer REAL threshold
+# when the classifier label itself is REAL.
+try:
+    UPLOAD_REAL_THRESHOLD = float(
+        os.environ.get("MV_UPLOAD_REAL_THRESHOLD", "80").strip() or "80"
+    )
+except Exception:
+    UPLOAD_REAL_THRESHOLD = 80.0
 KNOWN_SPEAKER_MIN_SIMILARITY = 0.72
 # Reference speaker match (no filename): min cosine / ambiguity gates below.
 # Minimum cosine sim to accept best reference (generic filenames / YouTube).
@@ -1433,13 +1441,18 @@ def process_audio(
             )
             # endregion
 
-    # Final binary verdict (never SUSPICIOUS): >=90% REAL for everyone.
-    result = "REAL" if confidence >= THRESHOLD_REAL else "FAKE"
+    # Final decision layer:
+    # - Uploads: if classifier says REAL, use softer threshold (default 80 via env)
+    # - Others: keep strict global threshold.
+    threshold_used = float(THRESHOLD_REAL)
+    if is_upload_source and bool(pred_is_real):
+        threshold_used = max(60.0, min(float(THRESHOLD_REAL), float(UPLOAD_REAL_THRESHOLD)))
+    result = "REAL" if confidence >= threshold_used else "FAKE"
 
     elapsed = round(time.time() - start, 2)
     print(
         f"[PIPELINE] Done: {result} {confidence}%  speaker={person}  "
-        f"threshold={THRESHOLD_REAL}%  time={elapsed}s\n"
+        f"threshold={threshold_used}%  pred_is_real={pred_is_real}  time={elapsed}s\n"
     )
 
     return {
@@ -1452,7 +1465,7 @@ def process_audio(
         "model_says_real":    bool(pred_is_real),
         "segment_count":      int(n_seg),
         "vote_real_fraction": round(float(vote_real), 4),
-        "threshold_used":     int(THRESHOLD_REAL),
+        "threshold_used":     float(round(threshold_used, 2)),
     }
 
 def safe_remove(*paths):
@@ -1498,6 +1511,7 @@ def health():
             "real": THRESHOLD_REAL,
             "fake": THRESHOLD_FAKE,
             "policy": "binary: >=real is REAL, else FAKE",
+            "upload_real_when_model_says_real": float(UPLOAD_REAL_THRESHOLD),
             "known_speaker_min_similarity": KNOWN_SPEAKER_MIN_SIMILARITY,
             "speaker_ref_min_similarity": SPEAKER_REF_MIN_SIMILARITY,
             "speaker_ref_second_ambiguous": SPEAKER_REF_SECOND_AMBIGUOUS,
