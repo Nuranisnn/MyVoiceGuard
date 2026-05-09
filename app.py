@@ -6,6 +6,10 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 os.environ.setdefault("NUMBA_NUM_THREADS", "1")
+# Avoid heavy Numba JIT compilation on low-memory Render workers.
+# Can be overridden with MV_ENABLE_NUMBA_JIT=1 on larger instances.
+if os.environ.get("MV_ENABLE_NUMBA_JIT", "").strip().lower() not in ("1", "true", "yes", "on"):
+    os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
 from flask import Flask, request, jsonify, make_response, send_from_directory
 from flask_cors import CORS
@@ -165,6 +169,7 @@ def root():
             "routes": "/routes",
             "endpoints": ["POST /predict-file", "POST /predict-url", "POST /predict-live"],
             "ffmpeg_in_path": _ffmpeg_available(),
+            "numba_disable_jit": os.environ.get("NUMBA_DISABLE_JIT", "0"),
         }
     )
 
@@ -1423,6 +1428,7 @@ def health():
         "librosa":          LIBROSA_OK,
         "pydub":            PYDUB_OK,
         "ffmpeg_in_path":   _ffmpeg_available(),
+        "numba_disable_jit": os.environ.get("NUMBA_DISABLE_JIT", "0"),
         "infer_low_memory_mode": _infer_low_memory_mode(),
         "infer_max_audio_sec":   _infer_max_audio_seconds(),
         "infer_segment_defaults": {
