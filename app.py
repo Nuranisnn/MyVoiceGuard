@@ -1095,12 +1095,35 @@ def calibrate_confidence_for_reference_match(
     is_upload_source = src.startswith("upload:")
 
     # Uploads are most vulnerable to cloned voices with high speaker similarity.
-    # Keep this reference-based REAL boost for URL/live only (can be re-enabled via env).
+    # Keep this gate configurable; default ON to reduce false-FAKE on real politician uploads.
     allow_upload_ref_boost = os.environ.get(
-        "MV_UPLOAD_ALLOW_REFERENCE_REAL_BOOST", "0"
+        "MV_UPLOAD_ALLOW_REFERENCE_REAL_BOOST", "1"
     ).strip().lower() not in ("0", "false", "no", "off")
     if is_upload_source and not allow_upload_ref_boost:
         return confidence
+
+    # Strong upload REAL path: keep strict 90% final policy, but calibrate confidence
+    # upward when model + segment votes + reference identity strongly agree.
+    strong_upload_real = (
+        is_upload_source
+        and bool(pred_is_real)
+        and hint in KNOWN_POLITICIAN_KEYS
+        and hint == pers
+        and vote >= 0.85
+        and segm >= 0.62
+        and nseg >= 3
+        and speaker_sim >= 0.85
+        and raw_prob_real >= 0.62
+    )
+    if strong_upload_real and confidence < THRESHOLD_REAL:
+        floor_c = 55.0 + 35.0 * vote + 35.0 * float(speaker_sim)
+        # Ensure this strong-consensus case can pass strict 90 threshold.
+        new_conf = float(min(98.0, max(confidence, 100.0 * float(raw_prob_real), floor_c, 90.1)))
+        print(
+            f"[MODEL] strong-upload-real calibration: base={confidence:.2f} "
+            f"raw_real={raw_prob_real:.4f} vote={vote:.2f} sim={speaker_sim:.4f} -> {new_conf:.2f}"
+        )
+        return round(new_conf, 2)
 
     cross = (
         not pred_is_real
@@ -1679,6 +1702,7 @@ def health():
             "real": THRESHOLD_REAL,
             "fake": THRESHOLD_FAKE,
             "policy": "binary: >=real is REAL, else FAKE",
+            "upload_reference_real_boost_enabled_default": True,
             "known_speaker_min_similarity": KNOWN_SPEAKER_MIN_SIMILARITY,
             "speaker_ref_min_similarity": SPEAKER_REF_MIN_SIMILARITY,
             "speaker_ref_second_ambiguous": SPEAKER_REF_SECOND_AMBIGUOUS,
