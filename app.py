@@ -105,14 +105,6 @@ def handle_unexpected_exception(e: Exception):
 # Binary thresholds: >=90% REAL, <90% FAKE (all speakers).
 THRESHOLD_REAL = 90
 THRESHOLD_FAKE = 90
-# Uploads are noisier than curated training clips; allow a softer REAL threshold
-# when the classifier label itself is REAL.
-try:
-    UPLOAD_REAL_THRESHOLD = float(
-        os.environ.get("MV_UPLOAD_REAL_THRESHOLD", "80").strip() or "80"
-    )
-except Exception:
-    UPLOAD_REAL_THRESHOLD = 80.0
 KNOWN_SPEAKER_MIN_SIMILARITY = 0.72
 # Reference speaker match (no filename): min cosine / ambiguity gates below.
 # Minimum cosine sim to accept best reference (generic filenames / YouTube).
@@ -722,6 +714,13 @@ def _model_predict_singlepass(features44):
     Fallback scorer when multi-segment path fails.
     Returns (raw_prob_real[0..1], pred_label, classes, real_idx).
     """
+    features44 = np.asarray(features44, dtype=np.float32).flatten()
+    # Prevent static outputs from invalid/empty feature vectors.
+    if features44.size == 0 or not np.all(np.isfinite(features44)):
+        raise RuntimeError("invalid feature vector for single-pass scoring")
+    if np.linalg.norm(features44) < 1e-6 or float(np.std(features44)) < 1e-7:
+        raise RuntimeError("degenerate feature vector for single-pass scoring")
+
     classes = list(getattr(model, "classes_", []))
     if not classes:
         raise RuntimeError("Model has no classes_")
@@ -1441,12 +1440,8 @@ def process_audio(
             )
             # endregion
 
-    # Final decision layer:
-    # - Uploads: if classifier says REAL, use softer threshold (default 80 via env)
-    # - Others: keep strict global threshold.
+    # Final binary verdict: strict global threshold for all sources.
     threshold_used = float(THRESHOLD_REAL)
-    if is_upload_source and bool(pred_is_real):
-        threshold_used = max(60.0, min(float(THRESHOLD_REAL), float(UPLOAD_REAL_THRESHOLD)))
     result = "REAL" if confidence >= threshold_used else "FAKE"
 
     elapsed = round(time.time() - start, 2)
@@ -1511,7 +1506,6 @@ def health():
             "real": THRESHOLD_REAL,
             "fake": THRESHOLD_FAKE,
             "policy": "binary: >=real is REAL, else FAKE",
-            "upload_real_when_model_says_real": float(UPLOAD_REAL_THRESHOLD),
             "known_speaker_min_similarity": KNOWN_SPEAKER_MIN_SIMILARITY,
             "speaker_ref_min_similarity": SPEAKER_REF_MIN_SIMILARITY,
             "speaker_ref_second_ambiguous": SPEAKER_REF_SECOND_AMBIGUOUS,
