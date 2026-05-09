@@ -1093,6 +1093,23 @@ def calibrate_confidence_for_reference_match(
     pers = (person or "").strip().lower()
     src = str(source_label or "").strip().lower()
     is_upload_source = src.startswith("upload:")
+    suspicious_upload_marker = any(
+        t in src
+        for t in (
+            "fake",
+            "deepfake",
+            "clone",
+            "cloned",
+            "voiceclone",
+            "tts",
+            "synthetic",
+            "synth",
+            "rvc",
+            "svc",
+            "elevenlabs",
+            "fakeyou",
+        )
+    )
 
     # Uploads are most vulnerable to cloned voices with high speaker similarity.
     # Keep this gate configurable; default ON to reduce false-FAKE on real politician uploads.
@@ -1106,14 +1123,15 @@ def calibrate_confidence_for_reference_match(
     # upward when model + segment votes + reference identity strongly agree.
     strong_upload_real = (
         is_upload_source
+        and not suspicious_upload_marker
         and bool(pred_is_real)
         and hint in KNOWN_POLITICIAN_KEYS
         and hint == pers
-        and vote >= 0.85
-        and segm >= 0.62
+        and vote >= 0.92
+        and segm >= 0.72
         and nseg >= 3
-        and speaker_sim >= 0.85
-        and raw_prob_real >= 0.62
+        and speaker_sim >= 0.93
+        and raw_prob_real >= 0.78
     )
     if strong_upload_real and confidence < THRESHOLD_REAL:
         floor_c = 55.0 + 35.0 * vote + 35.0 * float(speaker_sim)
@@ -1180,6 +1198,7 @@ def calibrate_confidence_for_reference_match(
 AI_MARKERS = [
     "tts", "generated", "synthesized", "deepfake",
     "artificial", "elevenlabs", "murf", "fakeyou", "voiceclone",
+    "fake", "cloned", "clone", "rvc", "svc", "synthetic",
 ]
 
 def check_signature(path):
