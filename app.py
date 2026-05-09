@@ -1304,6 +1304,9 @@ def process_audio(
     vote_real = 0.0
     n_seg = 0
     seg_mean = 0.0
+    model_score_ok = False
+    model_error_primary = ""
+    model_error_fallback = ""
     try:
         mp = model_predict_multisegment(wav_path, start_offset_sec=float(audio_start_sec or 0.0))
         features = mp["features_for_speaker"]
@@ -1349,9 +1352,11 @@ def process_audio(
                 f"[MODEL] single-pass classes={classes} real_idx={real_idx} pred={pred_label} "
                 f"raw_real={raw_prob_real:.4f} prob_real={prob_real:.2f}"
             )
+        model_score_ok = True
     except Exception as e:
         print(f"[MODEL] Error: {e}")
-        prob_real = 50.0
+        model_error_primary = str(e)
+        prob_real = 0.0
         raw_prob_real = 0.5
         try:
             features = extract_features_for_predict(
@@ -1363,14 +1368,41 @@ def process_audio(
                 vote_real = raw_prob_real
                 seg_mean = raw_prob_real
                 n_seg = max(1, n_seg)
+                model_score_ok = True
                 print(
                     f"[MODEL] exception fallback single-pass raw_real={raw_prob_real:.4f} "
                     f"prob_real={prob_real:.2f}"
                 )
             except Exception as e2:
+                model_error_fallback = str(e2)
                 print(f"[MODEL] fallback single-pass error: {e2}")
         except Exception:
             features = np.zeros(44)
+    if not model_score_ok:
+        # Do not return misleading static 50% when model inference failed.
+        elapsed = round(time.time() - start, 2)
+        err_txt = (model_error_primary or "") + (
+            f" | fallback: {model_error_fallback}" if model_error_fallback else ""
+        )
+        print(f"[MODEL] inference_failed: {err_txt}")
+        return {
+            "confidence": 0.0,
+            "person":     (name_hint or "unknown"),
+            "time":       elapsed,
+            "source":     source_label,
+            "result":     "FAKE",
+            "speaker_similarity": 0.0,
+            "model_says_real":    False,
+            "segment_count":      int(n_seg),
+            "vote_real_fraction": 0.0,
+            "threshold_used":     float(THRESHOLD_REAL),
+            "model_inference_failed": True,
+            "model_error": err_txt[:400],
+            "speech_gate_message": (
+                "Audio analysis failed inside the model pipeline. "
+                "Please retry with a shorter/cleaner clip or check server logs."
+            ),
+        }
 
     confidence = round(prob_real, 2)
 
