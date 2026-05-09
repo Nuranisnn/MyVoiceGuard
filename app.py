@@ -1112,26 +1112,31 @@ def calibrate_confidence_for_reference_match(
     )
 
     # Uploads are most vulnerable to cloned voices with high speaker similarity.
-    # Keep this gate configurable; default ON to reduce false-FAKE on real politician uploads.
+    # Keep this gate configurable; default OFF for safer fake-clone detection.
     allow_upload_ref_boost = os.environ.get(
-        "MV_UPLOAD_ALLOW_REFERENCE_REAL_BOOST", "1"
+        "MV_UPLOAD_ALLOW_REFERENCE_REAL_BOOST", "0"
     ).strip().lower() not in ("0", "false", "no", "off")
     if is_upload_source and not allow_upload_ref_boost:
         return confidence
 
     # Strong upload REAL path: keep strict 90% final policy, but calibrate confidence
     # upward when model + segment votes + reference identity strongly agree.
+    allow_strong_upload_real = os.environ.get(
+        "MV_UPLOAD_STRONG_REAL_CALIBRATION", "0"
+    ).strip().lower() not in ("0", "false", "no", "off")
     strong_upload_real = (
+        allow_strong_upload_real
+        and
         is_upload_source
         and not suspicious_upload_marker
         and bool(pred_is_real)
         and hint in KNOWN_POLITICIAN_KEYS
         and hint == pers
-        and vote >= 0.92
-        and segm >= 0.72
+        and vote >= 0.96
+        and segm >= 0.86
         and nseg >= 3
-        and speaker_sim >= 0.93
-        and raw_prob_real >= 0.78
+        and speaker_sim >= 0.96
+        and raw_prob_real >= 0.90
     )
     if strong_upload_real and confidence < THRESHOLD_REAL:
         floor_c = 55.0 + 35.0 * vote + 35.0 * float(speaker_sim)
@@ -1722,7 +1727,7 @@ def health():
             "real": THRESHOLD_REAL,
             "fake": THRESHOLD_FAKE,
             "policy": "binary: >=real is REAL, else FAKE",
-            "upload_reference_real_boost_enabled_default": True,
+            "upload_reference_real_boost_enabled_default": False,
             "known_speaker_min_similarity": KNOWN_SPEAKER_MIN_SIMILARITY,
             "speaker_ref_min_similarity": SPEAKER_REF_MIN_SIMILARITY,
             "speaker_ref_second_ambiguous": SPEAKER_REF_SECOND_AMBIGUOUS,
