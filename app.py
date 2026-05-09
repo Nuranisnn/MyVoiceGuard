@@ -1199,6 +1199,7 @@ AI_MARKERS = [
     "tts", "generated", "synthesized", "deepfake",
     "artificial", "elevenlabs", "murf", "fakeyou", "voiceclone",
     "fake", "cloned", "clone", "rvc", "svc", "synthetic",
+    "vc", "ai-voice", "aivoice",
 ]
 
 def check_signature(path):
@@ -1836,7 +1837,8 @@ def predict_file():
                 }
             ), 500
 
-        source_label = f"Upload: {file.filename[:50]}"
+        # Keep full filename for signature-based fake markers (clone/fake/tts etc).
+        source_label = f"Upload: {file.filename}"
         data = process_audio(wav_path, source_label, name_hint=name_hint)
         # region agent log
         _agent_debug_log(
