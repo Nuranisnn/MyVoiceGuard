@@ -705,7 +705,25 @@ def model_predict_multisegment(wav_path, start_offset_sec=0.0):
         return out
     except Exception as e:
         print(f"[MODEL] multi-segment error: {e}")
+        out["error"] = str(e)
         return out
+
+
+def _model_predict_singlepass(features44):
+    """
+    Fallback scorer when multi-segment path fails.
+    Returns (raw_prob_real[0..1], pred_label, classes, real_idx).
+    """
+    classes = list(getattr(model, "classes_", []))
+    if not classes:
+        raise RuntimeError("Model has no classes_")
+    _infer_real_class_from_references(classes)
+    real_idx = _get_real_class_index(classes)
+    vin = _adapt_features_for_model(features44)
+    pr = model.predict_proba([vin])[0]
+    pred = model.predict([vin])[0]
+    raw_prob_real = float(pr[real_idx])
+    return raw_prob_real, pred, classes, real_idx
 
 
 def _get_model_expected_features():
@@ -1243,6 +1261,31 @@ def process_audio(
             f"[MODEL] classes={classes} real_idx={real_idx} pred={pred_label} "
             f"raw_real={raw_prob_real:.4f} prob_real={prob_real:.2f}"
         )
+        # If multi-segment returned neutral/default output, run single-pass model fallback
+        # instead of returning 50% for every file.
+        if (
+            (not classes)
+            or pred_label is None
+            or ("error" in mp)
+            or (n_seg == 0 and abs(raw_prob_real - 0.5) < 1e-9)
+        ):
+            print(
+                "[MODEL] multi-segment fallback -> single-pass predict_proba "
+                f"(reason error={mp.get('error') if isinstance(mp, dict) else None})"
+            )
+            if np.linalg.norm(features) < 1e-9:
+                features = extract_features_for_predict(
+                    wav_path, start_offset_sec=float(audio_start_sec or 0.0)
+                )
+            raw_prob_real, pred_label, classes, real_idx = _model_predict_singlepass(features)
+            prob_real = max(0.0, min(100.0, raw_prob_real * 100.0))
+            vote_real = raw_prob_real
+            seg_mean = raw_prob_real
+            n_seg = max(1, n_seg)
+            print(
+                f"[MODEL] single-pass classes={classes} real_idx={real_idx} pred={pred_label} "
+                f"raw_real={raw_prob_real:.4f} prob_real={prob_real:.2f}"
+            )
     except Exception as e:
         print(f"[MODEL] Error: {e}")
         prob_real = 50.0
@@ -1251,6 +1294,18 @@ def process_audio(
             features = extract_features_for_predict(
                 wav_path, start_offset_sec=float(audio_start_sec or 0.0)
             )
+            try:
+                raw_prob_real, pred_label, classes, real_idx = _model_predict_singlepass(features)
+                prob_real = max(0.0, min(100.0, raw_prob_real * 100.0))
+                vote_real = raw_prob_real
+                seg_mean = raw_prob_real
+                n_seg = max(1, n_seg)
+                print(
+                    f"[MODEL] exception fallback single-pass raw_real={raw_prob_real:.4f} "
+                    f"prob_real={prob_real:.2f}"
+                )
+            except Exception as e2:
+                print(f"[MODEL] fallback single-pass error: {e2}")
         except Exception:
             features = np.zeros(44)
 
